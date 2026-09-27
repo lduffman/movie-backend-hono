@@ -1,4 +1,5 @@
 import type { AppEnv } from "#core/context/app-env.js";
+import { authenticate } from "#core/middleware/auth.middleware.js";
 import { errorHandler } from "#core/middleware/error-handler.js";
 import { requestContainer } from "#core/middleware/request-container.js";
 import { env } from "#env.js";
@@ -21,7 +22,8 @@ export function createApp() {
     }),
   );
 
-  // Contexte de requête : les services de cette requête
+  // Contexte de requête : qui est connecté ? puis les services de cette requête
+  app.use("*", authenticate);
   app.use("*", requestContainer);
 
   // Routes

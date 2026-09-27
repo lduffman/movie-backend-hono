@@ -1,6 +1,6 @@
 import { UnauthorizedError } from "#core/errors/http-errors.js";
 
-// L'utilisateur connecté (pour l'instant simulé, cf. requestContainer).
+// L'utilisateur tel qu'extrait du JWT par le middleware d'authentification.
 export type AuthUser = {
   id: string;
   username: string;

@@ -1,5 +1,6 @@
 import type { CurrentUser } from "#core/context/current-user.js";
 import type { Database } from "#database/client.js";
+import { createAuthService } from "./auth.service.js";
 import { createLibraryService } from "./library.service.js";
 import { createMovieService } from "./movie.service.js";
 import { createUserService } from "./user.service.js";
@@ -11,6 +12,7 @@ export type ServiceDeps = {
 };
 
 export const createServices = (deps: ServiceDeps) => ({
+  auth: createAuthService(deps),
   users: createUserService(deps),
   movies: createMovieService(deps),
   library: createLibraryService(deps),

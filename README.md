@@ -30,15 +30,14 @@ cp .env.example .env
 | `PORT` | non | `3000` | Port HTTP du serveur |
 | `DATABASE_URL` | oui | — | URL PostgreSQL (`postgresql://user:password@host:port/db`) |
 | `CORS_ALLOWED_ORIGINS` | oui | — | Origines autorisées, séparées par des virgules (ex. `http://localhost:5173`) |
-| `DEV_USER_ID` | oui | — | Id (UUID) de l'utilisateur « connecté » simulé — voir ci-dessous |
-| `DEV_USERNAME` | oui | — | Username de cet utilisateur |
+| `JWT_ISSUER` | oui | — | Émetteur (`iss`) des tokens |
+| `JWT_SECRET` | oui | — | Secret de signature HS256 — 32 caractères minimum recommandés (`openssl rand -base64 32`) |
+| `JWT_EXPIRATION_TIME` | non | `3600` | Durée de validité d'un token, en secondes |
 | `EXTERNAL_MOVIE_API_BASE_URL` | oui | — | URL du catalogue de films externe |
 | `EXTERNAL_MOVIE_API_KEY` | oui | — | Clé d'API du catalogue externe (fournie par l'enseignant) |
 
 L'environnement est validé au démarrage par Zod (`src/env.ts`) : une variable absente ou mal formée fait échouer le boot avec la liste des erreurs. `.env.local` est prioritaire sur `.env` — pratique pour tes secrets personnels.
 
-> ℹ️ **Pas encore d'authentification sur cette étape** : l'utilisateur courant est simulé, comme le `DevCurrentUser` côté Spring. Pour qu'il existe en base : lance le serveur, crée un compte avec `POST /auth/register`, puis reporte l'`id` renvoyé dans `DEV_USER_ID` et redémarre.
->
 > ⚠️ `.env` et `.env.local` sont dans le `.gitignore` : **aucun secret ne doit être commité**. Seul `.env.example` est versionné.
 >
 > ℹ️ `drizzle-kit` (commandes `db:*`) ne lit que `.env` (via `dotenv/config` dans `drizzle.config.ts`) : la `DATABASE_URL` doit donc y figurer, même si tu utilises `.env.local` pour le reste.
@@ -83,6 +82,35 @@ Build de production :
 npm run build && npm start
 ```
 
+## Endpoints
+
+Même contrat que le backend Spring (`movie-backend/docs/movie-library.openapi.yaml`) : un front peut utiliser l'un ou l'autre sans changement.
+
+| Méthode | Route | Auth | Description |
+|---|---|---|---|
+| `POST` | `/auth/register` | — | Inscription → `201` |
+| `POST` | `/auth/login` | — | Connexion → `{ accessToken, tokenType, expiresIn }` |
+| `GET` | `/movies/search?q=&genre=&page=&size=&sort=` | — | Recherche paginée (`sort` ∈ `title, year, rating, runtime, votes`) |
+| `GET` | `/movies/genres` | — | Genres distincts (mis en cache) |
+| `GET` | `/movies/{movieId}` | — | Détail d'un film |
+| `GET` | `/movies/{movieId}/comments?page=&size=` | — | Commentaires, du plus récent au plus ancien (`404` si le film n'existe pas) |
+| `POST` | `/movies/{movieId}/comments` | ✅ | Ajouter un commentaire → `201` |
+| `GET` | `/me/library?watched=&page=&size=&sort=` | ✅ | Ma bibliothèque (`sort` ∈ `createdAt, rating, watched, movie.title, movie.year`, défaut `createdAt,desc`) |
+| `GET` | `/me/library/{movieId}` | ✅ | Une entrée de ma bibliothèque |
+| `PUT` | `/me/library/{movieId}` | ✅ | Ajouter / modifier (`{ watched, rating }`) |
+| `DELETE` | `/me/library/{movieId}` | ✅ | Retirer → `204` (`404` si absent de la bibliothèque) |
+| `GET` | `/external/movies?query=` | — | Recherche dans le catalogue externe |
+
+Routes ✅ : header `Authorization: Bearer <accessToken>`.
+
+Erreurs — même format que Spring :
+
+```json
+{ "status": 404, "message": "Movie not found", "timestamp": "…" }
+{ "status": 400, "message": "Invalid request", "timestamp": "…",
+  "errors": [{ "field": "movieId", "message": "Invalid UUID" }] }
+```
+
 ## Architecture
 
 ```
@@ -99,7 +127,7 @@ src/
 └── core/
     ├── context/        # AppEnv (c.var.*) + CurrentUser
     ├── errors/         # AppError & co + wrapper de validation
-    ├── middleware/     # requestContainer, errorHandler
+    ├── middleware/     # authenticate / requireAuth, requestContainer, errorHandler
     └── utils/          # hash de mot de passe, cache mémoire
 ```
 
@@ -107,9 +135,10 @@ Hono n'impose aucune structure : ce découpage est **un choix**, calqué sur les
 
 ### Le contexte de requête (injection de dépendances « à la main »)
 
-Côté Spring, le conteneur injecte les services et `CurrentUser` donne l'utilisateur connecté. Ici, c'est le middleware global `requestContainer` qui joue ce rôle : il construit les services de la requête avec leurs dépendances, `createServices({ db, currentUser })`, et les pose dans `c.var.services`.
+Côté Spring, le conteneur injecte les services et `CurrentUser` donne l'utilisateur connecté. Ici, deux middlewares globaux jouent ce rôle :
 
-Sur cette étape, `currentUser` est l'utilisateur simulé du `.env`. Sur `step-3-auth`, il sera lu dans le JWT — **sans changer une ligne des services**.
+1. `authenticate` — si un header `Authorization` est présent, vérifie le JWT (`401` s'il est invalide) et pose `c.var.user`.
+2. `requestContainer` — construit les services de la requête avec leurs dépendances, `createServices({ db, currentUser })`, et les pose dans `c.var.services`.
 
 Les routes n'instancient donc rien :
 
@@ -120,7 +149,7 @@ libraryRoutes.get("/", validate("query", searchLibrarySchema), async (c) => {
 });
 ```
 
-Et les services ne connaissent pas Hono : ils reçoivent un `CurrentUser` (`id()`, `username()`) et ne savent pas d'où il vient.
+Et les services ne connaissent pas Hono : ils reçoivent un `CurrentUser` dont `id()` lève une `UnauthorizedError` si personne n'est connecté. Les routes privées sont protégées par `requireAuth`.
 
 ### Correspondances avec Spring
 
@@ -131,7 +160,10 @@ Et les services ne connaissent pas Hono : ils reçoivent un `CurrentUser` (`id()
 | `JpaRepository` / `@Query` | `repositories/*.repository.ts` (Drizzle) |
 | DTO + `@Valid` (Bean Validation) | schéma Zod + `validate(...)` |
 | `ApiException` + `@RestControllerAdvice` | `AppError` + `app.onError(errorHandler)` |
-| `CurrentUser` / `DevCurrentUser` | `CurrentUser` / `createCurrentUser` + `DEV_USER_ID` |
+| `SecurityFilterChain` + `oauth2ResourceServer` | `authenticate` + `requireAuth` |
+| `CurrentUser` / `SecurityCurrentUser` | `CurrentUser` / `createCurrentUser` |
 | `@HttpExchange` + `RestClient` | `clients/externalMovie.client.ts` (`fetch`) |
 | `@Cacheable` | `createMemoryCache` (`core/utils/memory-cache.ts`) |
 | Liquibase / Flyway | Drizzle Kit |
+
+> ℹ️ Pourquoi pas le middleware `hono/cache` ? Il repose sur la Web Cache API (Cloudflare Workers, Deno…), absente de Node : il ne mettait rien en cache ici. Le cache mémoire vit au niveau du module (les services, eux, sont recréés à chaque requête) et expire au bout de 10 minutes.

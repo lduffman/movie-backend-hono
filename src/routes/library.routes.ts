@@ -1,5 +1,6 @@
 import type { AppEnv } from "#core/context/app-env.js";
 import { validate } from "#core/errors/validator.js";
+import { requireAuth } from "#core/middleware/auth.middleware.js";
 import {
   searchLibrarySchema,
   upsertLibrarySchema,
@@ -10,6 +11,9 @@ import z from "zod";
 const movieIdParam = z.object({ movieId: z.uuid() });
 
 const libraryRoutes = new Hono<AppEnv>();
+
+// Toute la bibliothèque est privée : /me/library/* exige un utilisateur connecté
+libraryRoutes.use("*", requireAuth);
 
 libraryRoutes.get("/", validate("query", searchLibrarySchema), async (c) => {
   const { watched, page, size, sort } = c.req.valid("query");

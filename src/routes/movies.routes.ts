@@ -1,5 +1,6 @@
 import type { AppEnv } from "#core/context/app-env.js";
 import { validate } from "#core/errors/validator.js";
+import { requireAuth } from "#core/middleware/auth.middleware.js";
 import { paginationSchema } from "#schemas/common.schema.js";
 import {
   commentUpsertSchema,
@@ -57,6 +58,7 @@ moviesRoutes.get(
 
 moviesRoutes.post(
   "/:movieId/comments",
+  requireAuth,
   validate("param", movieIdParam),
   validate("json", commentUpsertSchema),
   async (c) => {

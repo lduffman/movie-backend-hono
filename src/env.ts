@@ -22,9 +22,9 @@ const envSchema = z.object({
 
   CORS_ALLOWED_ORIGINS: z.string().transform((value) => value.split(",").map((origin) => origin.trim())),
   
-  // Pas encore d'authentification : l'utilisateur courant est simulé (cf. DevCurrentUser côté Spring)
-  DEV_USER_ID: z.uuid(),
-  DEV_USERNAME: z.string().min(1),
+  JWT_SECRET: z.string().min(1),
+  JWT_EXPIRATION_TIME: z.coerce.number().int().positive().default(3600),
+  JWT_ISSUER: z.string().min(1),
 
   EXTERNAL_MOVIE_API_KEY: z.string().min(1),
   EXTERNAL_MOVIE_API_BASE_URL: z.url(),
