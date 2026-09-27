@@ -10,7 +10,7 @@ export const movies = pgTable("movies", {
   year: integer().notNull(),
   genres: text().array().notNull().default(sql`'{}'::text[]`),
   plot: text().notNull(),
-  rating: numeric({ precision: 3, scale: 1 }),
+  rating: numeric({ precision: 3, scale: 1, mode: "number"}),
   votes: integer(),
   runtime: integer(),
   directors: text().array().notNull().default(sql`'{}'::text[]`),

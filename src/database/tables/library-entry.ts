@@ -9,7 +9,7 @@ export const libraryEntries = pgTable("library_entries", {
   userId: uuid().notNull().references(() => users.id),
   movieId: uuid().notNull().references(() => movies.id),
   watched: boolean().notNull().default(false),
-  rating: numeric({ precision: 3, scale: 1 }),
+  rating: numeric({ precision: 3, scale: 1, mode: "number" }),
   ...auditData(),
 }, (t) => [
   unique("UX_library_entries_userId_movieId").on(t.userId, t.movieId),
@@ -17,3 +17,4 @@ export const libraryEntries = pgTable("library_entries", {
 
 export type LibraryEntry = typeof libraryEntries.$inferSelect;
 export type NewLibraryEntry = typeof libraryEntries.$inferInsert;
+export type LibraryEntryWithMovie = LibraryEntry & { movie: typeof movies.$inferSelect };
