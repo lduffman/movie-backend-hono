@@ -82,6 +82,34 @@ Build de production :
 npm run build && npm start
 ```
 
+## Tests
+
+```bash
+npm test             # lance toute la suite (Vitest)
+npm run test:watch   # relance à chaque modification
+```
+
+Aucune base de données n'est nécessaire : les tests sont unitaires, les dépendances externes sont remplacées par des doublures. Les variables d'environnement de test sont définies dans `vitest.config.ts`.
+
+```
+test/
+├── fixtures/test-data.ts   # jeux de données (aUser(), aMovie()…)
+├── converters.test.ts      # fonctions pures : ni mock ni base
+├── core/                   # CurrentUser, cache mémoire
+├── services/               # logique métier, repositories mockés (vi.mock)
+└── routes/                 # contrat HTTP : app complète, services mockés (app.request)
+```
+
+| Spring (JUnit 5 + Mockito + AssertJ) | Hono (Vitest) |
+|---|---|
+| `@Mock` / `@InjectMocks` | `vi.mock("#repositories/…")` + `vi.mocked(createXRepository).mockReturnValue(fake)` |
+| `when(...).thenReturn(...)` | `fake.method.mockResolvedValue(...)` |
+| `verify(mock).method(args)` / `never()` | `expect(fn).toHaveBeenCalledWith(args)` / `.not.toHaveBeenCalled()` |
+| `ArgumentCaptor` | `toHaveBeenCalledWith(...)` sur l'objet attendu |
+| `assertThat(x).isEqualTo(y)` | `expect(x).toEqual(y)` |
+| `@WebMvcTest` + `MockMvc` + `@MockitoBean` | `createApp()` + `app.request(...)` + `createServices` mocké |
+| `.with(jwt())` | un vrai token : `Authorization: Bearer ${await issueToken(aUser())}` |
+
 ## Endpoints
 
 Même contrat que le backend Spring (`movie-backend/docs/movie-library.openapi.yaml`) : un front peut utiliser l'un ou l'autre sans changement.

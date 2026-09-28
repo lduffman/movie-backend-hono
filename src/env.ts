@@ -15,7 +15,7 @@ const postgresUrl = z.string().refine(
 );
 
 const envSchema = z.object({
-  NODE_ENV: z.enum(["development", "production"]).default("development"),
+  NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   APP_NAME: z.string().min(1),
   DATABASE_URL: postgresUrl,
   PORT: z.coerce.number().int().positive().default(3000),
